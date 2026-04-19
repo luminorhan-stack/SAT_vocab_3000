@@ -170,7 +170,16 @@
                     </div>
                     <div v-if="flashList.length" class="flex justify-between items-center mt-12">
                         <button @click="prevFlash" class="p-4 bg-white rounded-full shadow-lg text-xl">⬅️</button>
-                        <div class="bg-indigo-50 px-6 py-2 rounded-full font-black text-indigo-600">{{flashIdx + 1}} / {{flashList.length}}</div>
+                        
+                        <div class="flex flex-col items-center gap-3">
+                            <div class="bg-indigo-50 px-6 py-2 rounded-full font-black text-indigo-600">{{flashIdx + 1}} / {{flashList.length}}</div>
+                            <button @click="toggleFlashcardWrong" 
+                                    :class="['px-5 py-2 rounded-full text-xs font-bold transition-all shadow-sm border', 
+                                             isCurrentInWrongs ? 'bg-orange-100 text-orange-600 border-orange-200' : 'bg-white text-slate-400 border-slate-200 hover:border-orange-300 hover:text-orange-500']">
+                                {{ isCurrentInWrongs ? '★ 已在错题本' : '☆ 记入错题本' }}
+                            </button>
+                        </div>
+                        
                         <button @click="nextFlash" class="p-4 bg-white rounded-full shadow-lg text-xl">➡️</button>
                     </div>
                 </div>
@@ -301,19 +310,41 @@
                 const curr = computed(() => testList.value[idx.value] || {});
                 const finalScore = computed(() => testList.value.length ? Math.round((correctCount.value / testList.value.length) * 100) : 0);
 
-                // 🌟 终极版发音逻辑：直接调用有道词典官方发音 API
+                // 🌟 新增逻辑 1：实时判断当前闪卡是否已经在错题本里
+                const isCurrentInWrongs = computed(() => {
+                    if (!flashList.value.length) return false;
+                    const currentWordObj = flashList.value[flashIdx.value];
+                    return wrongs.value.some(w => w.word === currentWordObj.word);
+                });
+
+                // 🌟 新增逻辑 2：点击按钮时，执行加入或移出租题本的操作
+                function toggleFlashcardWrong() {
+                    if (!flashList.value.length) return;
+                    const currentWordObj = flashList.value[flashIdx.value];
+                    
+                    // 找找看错题本里有没有它
+                    const existingIdx = wrongs.value.findIndex(w => w.word === currentWordObj.word);
+
+                    if (existingIdx !== -1) {
+                        // 如果已经在里面了，就把它删掉（反悔操作）
+                        wrongs.value.splice(existingIdx, 1);
+                    } else {
+                        // 如果不在里面，就把它加到最前面
+                        wrongs.value.unshift(currentWordObj);
+                    }
+                    // 记得保存到浏览器的本地记忆里
+                    localStorage.setItem('sat_wrongs', JSON.stringify(wrongs.value));
+                }
+
                 function playAudio(text) {
-                    // 使用 encodeURIComponent 确保单词里有空格也能正确读取，type=2 代表美式发音
                     const audioUrl = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`;
                     const audio = new Audio(audioUrl);
-                    
                     audio.play().catch(error => {
                         console.warn("网络音频播放失败，尝试使用系统自带语音兜底", error);
-                        fallbackSpeech(text); // 如果因为断网等原因播放失败，就用系统语音兜底
+                        fallbackSpeech(text);
                     });
                 }
 
-                // 这是断网时的“备胎”语音功能
                 function fallbackSpeech(text) {
                     if ('speechSynthesis' in window) {
                         window.speechSynthesis.cancel();
@@ -493,7 +524,9 @@
                     examLogs, isExamMode, exitTest, sortedUnits, flashUnit, flashIdx, isFlipped, flashList, selectFlashUnit, 
                     nextFlash, prevFlash, clearLogs, exportWrongs, selectedUnits, customCount, startCustomTest, importCSV,
                     unitsToDelete, deleteSelectedCustomUnits, isWrongTestMode, startWrongTest, totalTests, averageScore,
-                    playAudio
+                    playAudio,
+                    // 🌟 记得暴露出来给模板使用
+                    isCurrentInWrongs, toggleFlashcardWrong
                 };
             }
         }).mount('#app');
