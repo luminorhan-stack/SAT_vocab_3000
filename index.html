@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAT 词汇检测系统Pro - Lumi's</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="pb-32 lg:pb-8">
+    <div id="app" v-cloak>
+        <!-- Auth Screen -->
+        <div v-if="!isAuthorized" class="fixed inset-0 z-[100] bg-slate-900 flex items-center justify-center p-6">
+            <div class="bg-white p-8 rounded-[3rem] shadow-2xl w-full max-w-sm text-center">
+                <div class="text-4xl mb-4">🔐</div>
+                <h2 class="text-2xl font-black text-slate-800 mb-2">Lumi's SAT</h2>
+                <p class="text-slate-400 text-sm mb-6 font-bold uppercase tracking-widest">请验证密码进入系统</p>
+                <input type="password" v-model="passInput" @keyup.enter="checkPass" placeholder="输入密码"
+                       class="w-full p-4 border-2 border-slate-100 rounded-2xl mb-4 text-center focus:border-indigo-500 outline-none transition-all">
+                <button @click="checkPass" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-200">进入系统</button>
+            </div>
+        </div>
+
+        <!-- Vocab Selector Screen -->
+        <div v-if="isAuthorized && !vocabMode" class="fixed inset-0 z-[90] bg-slate-50 flex items-center justify-center p-6 overflow-y-auto">
+            <div class="w-full max-w-md lg:max-w-4xl my-10">
+                <h2 class="text-2xl font-black text-slate-800 text-center mb-2">选择词库</h2>
+                <p class="text-slate-400 text-sm text-center mb-10 font-bold uppercase tracking-widest">Choose Your Vocabulary</p>
+
+                <div class="space-y-5 lg:grid lg:grid-cols-3 lg:gap-5 lg:space-y-0">
+                    <button v-for="(b, bid) in booksMeta" :key="bid" @click="selectVocab(bid)"
+                            class="w-full p-8 lg:p-6 bg-white rounded-[2rem] shadow-xl border-2 text-left group active:scale-95 transition-all"
+                            :class="bid==='3000' ? 'border-indigo-100 hover:border-indigo-400' : (bid==='700' ? 'border-amber-100 hover:border-amber-400' : 'border-green-100 hover:border-green-600')">
+                        <div class="flex items-center justify-between mb-3 gap-2">
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-black uppercase tracking-widest mb-1"
+                                     :class="bid==='3000' ? 'text-indigo-400' : (bid==='700' ? 'text-amber-500' : 'text-green-600')">{{ b.sub }}</div>
+                                <h3 class="text-2xl lg:text-xl font-black text-slate-800 whitespace-nowrap">{{ b.name }}</h3>
+                            </div>
+                            <div class="text-5xl lg:text-4xl shrink-0">{{ b.icon }}</div>
+                        </div>
+                        <p class="text-slate-400 text-sm">{{ b.desc }}</p>
+                        <div class="mt-4 flex gap-2 flex-wrap">
+                            <span v-for="f in ['练习','抽测','闪卡','错题','计划','掌握']" :key="f"
+                                  class="text-xs font-bold px-3 py-1 rounded-full"
+                                  :class="bid==='3000' ? 'text-indigo-600 bg-indigo-50' : (bid==='700' ? 'text-amber-600 bg-amber-50' : 'text-green-600 bg-green-50')">{{ f }}</span>
+                        </div>
+                    </button>
+                </div>
+
+                <p class="text-center text-slate-300 text-xs mt-10 italic">错题本与自定义词库在所有词库间共享</p>
+            </div>
+        </div>
+
+        <!-- Main App -->
+        <div v-if="isAuthorized && vocabMode" :class="'theme-' + vocabMode">
+        <header class="bg-white border-b p-4 lg:px-8 sticky top-0 z-50 flex justify-between items-center shadow-sm">
+            <div class="flex items-center gap-2">
+                <button v-if="isTesting || showResult" @click="exitTest" class="text-slate-400 hover:text-slate-600 font-bold px-3 py-1 border rounded-full text-xs transition">⬅ 退出</button>
+                <div v-else class="flex flex-col leading-tight">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-black uppercase tracking-tighter" :style="{color: 'var(--c-primary)'}">Lumi's</span>
+                        <span v-if="vocabMode === '700'" class="text-[9px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">卓越班</span>
+                        <span v-if="vocabMode === '1600'" class="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">机考核心</span>
+                    </div>
+                    <h1 class="font-black text-slate-800 text-sm">SAT 词汇检测系统Pro</h1>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button v-if="!isTesting && !showResult" @click="switchVocab"
+                        class="text-xs font-bold px-3 py-1 border rounded-full transition text-slate-500 hover:bg-slate-50">
+                    🔄 切换词库
+                </button>
+                <button v-if="!isTesting && !showResult" @click="showAdmin = !showAdmin"
+                        :class="['text-xs font-bold px-3 py-1 border rounded-full transition-colors', showAdmin ? 'text-white' : 'text-slate-400']"
+                        :style="showAdmin ? {background: 'var(--c-primary)', borderColor: 'var(--c-primary)'} : {}">
+                    {{ showAdmin ? '关闭看板' : '📊 看板' }}
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation: mobile = bottom floating pill / desktop = top tab bar -->
+        <div class="lg:max-w-6xl lg:mx-auto lg:px-8">
+            <nav v-if="isAuthorized && vocabMode && !isTesting && !showResult && !showAdmin"
+                 class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[95%] max-w-md h-20 glass border border-white shadow-2xl rounded-full flex z-50 overflow-hidden lg:static lg:bottom-auto lg:left-auto lg:translate-x-0 lg:mt-4 lg:mb-2 lg:w-full lg:max-w-none lg:h-16 lg:shadow-lg">
+                <button v-for="t in [['home','🎯','词库'], ['plan','🗓️','计划'], ['custom','🎛️','自选'], ['flash','🗂️','闪卡'], ['wrong','📒','错题'], ['mastery','📦','掌握']]"
+                        @click="tab=t[0]"
+                        :class="['flex-1 flex flex-col items-center justify-center transition-all', tab===t[0]?'scale-105':'text-slate-400 hover:bg-slate-50/50']"
+                        :style="tab===t[0] ? {color: 'var(--c-primary)', background: 'var(--c-primary-50)'} : {}">
+                    <span class="text-xl">{{t[1]}}</span>
+                    <span class="text-[9px] uppercase font-black tracking-widest mt-1">{{t[2]}}</span>
+                </button>
+            </nav>
+        </div>
+
+        <main class="p-4 lg:p-8 max-w-2xl lg:max-w-6xl mx-auto">
+
+            <!-- Admin Dashboard -->
+            <div v-if="showAdmin" class="mb-8 p-6 bg-white rounded-[2rem] shadow-xl border border-slate-100">
+                <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
+                    <h3 class="font-black text-slate-800 text-xl">📊 学习追踪</h3>
+                    <div class="flex gap-2">
+                        <button @click="backupDownload" class="text-xs font-bold px-3 py-1 rounded-full border transition hover:opacity-80"
+                                :style="{color: 'var(--c-primary-700)', background: 'var(--c-primary-50)', borderColor: 'var(--c-primary-100)'}">📤 备份</button>
+                        <button @click="backupRestoreClick" class="text-xs font-bold px-3 py-1 rounded-full border transition hover:opacity-80"
+                                :style="{color: 'var(--c-primary-700)', background: 'var(--c-primary-50)', borderColor: 'var(--c-primary-100)'}">📥 恢复</button>
+                        <button @click="clearLogs" class="text-xs text-red-500 bg-red-50 px-3 py-1 rounded-full font-bold hover:bg-red-100">清空数据</button>
+                        <input type="file" accept=".json" ref="restoreFile" class="hidden" @change="backupRestoreFile">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-8">
+                    <div class="p-4 rounded-2xl text-center" :style="{background: 'var(--c-primary-50)'}">
+                        <div class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">总闯关次数</div>
+                        <div class="text-3xl font-black" :style="{color: 'var(--c-primary)'}">{{ totalTests }}</div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-2xl text-center">
+                        <div class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">平均正确率</div>
+                        <div class="text-3xl font-black text-green-600">{{ averageScore }}%</div>
+                    </div>
+                </div>
+
+                <div class="lg:grid lg:grid-cols-2 lg:gap-x-8 lg:gap-y-8 lg:items-start">
+                    <!-- 最近测验记录 -->
+                    <div>
+                        <h4 class="font-bold text-slate-400 text-xs uppercase tracking-widest mb-4">最近测验记录</h4>
+                        <div v-if="examLogs.length === 0" class="text-center text-slate-300 text-sm py-4 italic">还没留下足迹，快去测验吧！</div>
+                        <div class="space-y-4 max-h-64 lg:max-h-[26rem] overflow-y-auto no-scrollbar pr-2">
+                            <div v-for="(log, index) in examLogs" :key="index" class="relative">
+                                <div class="flex justify-between text-xs font-bold text-slate-600 mb-1">
+                                    <span>{{log.date}} | {{log.unit}} <span v-if="log.mode" class="text-slate-300">({{log.mode === '700' ? '卓越班' : (log.mode === '1600' ? '机考核心' : '3000词')}})</span></span>
+                                    <span :class="log.score >= 80 ? 'text-green-500' : (log.score >= 60 ? 'text-orange-500' : 'text-red-500')">
+                                        {{log.score}}%
+                                    </span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2.5">
+                                    <div :class="['h-2.5 rounded-full transition-all duration-1000', log.score >= 80 ? 'bg-green-400' : (log.score >= 60 ? 'bg-orange-400' : 'bg-red-400')]"
+                                         :style="{ width: log.score + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- v2.1 方案3：近30天学习趋势 -->
+                    <div class="mt-8 lg:mt-0">
+                        <h4 class="font-bold text-slate-400 text-xs uppercase tracking-widest mb-4">📈 近 30 天学习量</h4>
+                        <div class="bg-slate-50 rounded-2xl p-3">
+                            <svg viewBox="0 0 340 110" class="w-full h-28" preserveAspectRatio="none">
+                                <line x1="0" y1="105" x2="340" y2="105" stroke="#e2e8f0" stroke-width="1"/>
+                                <g v-for="(d, i) in last30" :key="d.date">
+                                    <title>{{ d.date }}：{{ d.total }} 题（错 {{ d.wrong }}）</title>
+                                    <rect v-if="d.total" :x="(i * 11.33 + 1.5).toFixed(1)" :y="(105 - (d.wrong / last30Max) * 95).toFixed(1)"
+                                          width="8.3" :height="((d.wrong / last30Max) * 95).toFixed(1)" fill="#f87171" rx="1"/>
+                                    <rect v-if="d.total" :x="(i * 11.33 + 1.5).toFixed(1)" :y="(105 - (d.total / last30Max) * 95).toFixed(1)"
+                                          width="8.3" :height="(((d.total - d.wrong) / last30Max) * 95).toFixed(1)" fill="#4ade80" rx="1"/>
+                                </g>
+                            </svg>
+                            <div class="flex justify-between text-[9px] font-bold text-slate-300 px-1 mt-1">
+                                <span>{{ last30[0] ? last30[0].date.slice(5) : '' }}</span>
+                                <span>绿=答对 · 红=答错</span>
+                                <span>今天</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- v2.1 方案3：薄弱单元 TOP5 -->
+                    <div class="mt-8 lg:mt-0">
+                        <h4 class="font-bold text-slate-400 text-xs uppercase tracking-widest mb-4">🎯 薄弱单元 TOP5 <span class="normal-case tracking-normal font-normal">（≥10 题）</span></h4>
+                        <div v-if="weakUnits.length === 0" class="text-center text-slate-300 text-sm py-4 italic">数据不足，多测几单元就能看到排行</div>
+                        <div v-else class="space-y-3">
+                            <div v-for="w in weakUnits" :key="w.unit">
+                                <div class="flex justify-between text-xs font-bold text-slate-600 mb-1">
+                                    <span>{{ w.unit }}</span>
+                                    <span :class="w.rate >= 40 ? 'text-red-500' : 'text-orange-500'">{{ w.rate }}%（错 {{ w.wrong }}/{{ w.total }}）</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2.5">
+                                    <div :class="['h-2.5 rounded-full', w.rate >= 40 ? 'bg-red-400' : 'bg-orange-400']" :style="{ width: w.rate + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- v2.1 方案3：高危词（答错≥3次） -->
+                    <div class="mt-8 lg:mt-0">
+                        <h4 class="font-bold text-slate-400 text-xs uppercase tracking-widest mb-4">⚠️ 高危词 <span class="normal-case tracking-normal font-normal">（累计答错 ≥3 次）</span></h4>
+                        <div v-if="dangerWords.length === 0" class="text-center text-slate-300 text-sm py-4 italic">暂无高危词，保持住！</div>
+                        <div v-else class="space-y-2 max-h-60 lg:max-h-[26rem] overflow-y-auto no-scrollbar pr-2">
+                            <div v-for="d in dangerWords" :key="d.word" class="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-red-50">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-black text-slate-800 text-sm truncate">{{ d.word }} <span class="text-red-400 text-[10px]">×{{ d.count }}</span></div>
+                                    <div class="text-[11px] text-slate-400 truncate">{{ d.meta ? d.meta.unit + ' · ' + d.meta.meaning : '（词库外单词）' }}</div>
+                                </div>
+                                <button v-if="!d.inWrongs" @click="addDangerToWrongs(d.word)"
+                                        class="text-[10px] font-black px-3 py-2 rounded-full text-white shrink-0" style="background:#ef4444">+ 错题本</button>
+                                <span v-else class="text-[10px] font-black text-orange-500 bg-orange-50 px-3 py-2 rounded-full shrink-0">已在错题本</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Home Tab -->
+            <div v-if="!showAdmin">
+                <div v-if="tab==='home' && !isTesting && !showResult">
+
+                    <!-- v2: 今日计划速览卡 -->
+                    <div v-if="plan && todayView && (todayView.newUndone.length || todayView.revUndone.length)" class="mb-6 plan-hero text-white cursor-pointer" @click="tab='plan'">
+                        <div class="flex items-center gap-4">
+                            <div class="plan-ring">
+                                <svg width="88" height="88" viewBox="0 0 88 88">
+                                    <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="8"/>
+                                    <circle cx="44" cy="44" r="38" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"
+                                            :stroke-dasharray="(238.76 * todayDoneRatio).toFixed(1) + ' 238.76'"/>
+                                </svg>
+                                <div class="num">{{ Math.round(todayDoneRatio * 100) }}%</div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">今日任务 · {{ planBookName(plan.bookId) }}</div>
+                                <div class="text-lg font-black leading-snug">
+                                    新词 {{ todayView.newUndone.length }} 待学 · 复习 {{ todayView.revUndone.length }} 待复习
+                                </div>
+                                <div class="text-[11px] opacity-70 mt-1">点这里或「计划」标签开始今日任务</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="plan && todayView && !todayView.newUndone.length && !todayView.revUndone.length && (todayView.tasks.newWords.length || todayView.tasks.reviews.length)" class="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl text-center cursor-pointer" @click="tab='plan'">
+                        <span class="text-sm font-black text-green-700">🎉 今日任务已全部完成 · 点此查看计划</span>
+                    </div>
+
+                    <!-- v2.1 方案2：抽测智能过滤开关 + CSV 导入（桌面并排） -->
+                    <div class="lg:grid lg:grid-cols-2 lg:gap-4 lg:mb-6">
+                        <div class="mb-6 lg:mb-0 px-5 py-4 bg-white rounded-3xl shadow-sm border flex items-center justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="font-bold text-slate-700 text-sm">🎯 抽测智能过滤</div>
+                                <div class="text-[11px] text-slate-400 mt-0.5 leading-snug">开启后，抽测与自选检测将跳过「🟢 已掌握」归档词</div>
+                            </div>
+                            <label class="cursor-pointer shrink-0 flex items-center gap-2">
+                                <span class="text-[10px] font-black" :class="filterMastered ? 'text-green-600' : 'text-slate-300'">{{ filterMastered ? '已开启' : '已关闭' }}</span>
+                                <input type="checkbox" v-model="filterMastered" class="w-5 h-5 cursor-pointer" :style="{accentColor: 'var(--c-primary)'}">
+                            </label>
+                        </div>
+
+                        <div class="mb-6 lg:mb-0 p-5 bg-white rounded-3xl shadow-sm border-2 border-dashed text-center hover:border-amber-400 transition-colors flex flex-col justify-center"
+                             :style="{borderColor: 'var(--c-primary-200)'}">
+                            <h3 class="font-bold text-slate-700 text-sm mb-3">📥 导入专属词库 (CSV)</h3>
+                            <input type="file" accept=".csv" @change="importCSV"
+                                   class="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:text-white cursor-pointer"
+                                   :style="{'file:background': 'var(--c-primary)'}">
+                        </div>
+
+                        <div v-if="customUnits.length > 0" class="mb-6 lg:mb-0 lg:col-span-2 p-5 bg-white rounded-3xl shadow-sm border border-slate-100">
+                            <h3 class="font-bold text-slate-700 text-sm mb-3">🗑️ 选择要清除的自定义词库</h3>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-3 max-h-32 overflow-y-auto no-scrollbar">
+                                <label v-for="u in customUnits" :key="u"
+                                       :class="['flex items-center space-x-2 p-2 rounded-xl border-2 cursor-pointer transition-all', unitsToDelete.includes(u) ? 'border-red-400 bg-red-50' : 'border-slate-100 bg-slate-50 hover:border-red-200']">
+                                    <input type="checkbox" :value="u" v-model="unitsToDelete" class="hidden">
+                                    <span :class="['text-xs font-bold w-full text-center truncate', unitsToDelete.includes(u) ? 'text-red-600' : 'text-slate-500']" :title="u">{{u}}</span>
+                                </label>
+                            </div>
+                            <button v-if="unitsToDelete.length > 0" @click="deleteSelectedCustomUnits" class="w-full py-3 bg-red-500 text-white rounded-xl text-sm font-black shadow-md hover:bg-red-600 transition active:scale-95">
+                                ⚠️ 确认清除选中的 {{unitsToDelete.length}} 个词库
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-for="(units, lv) in levelGroups" :key="lv" class="mb-4 bg-white rounded-3xl shadow-sm border overflow-hidden">
+                        <div class="p-4 bg-slate-50 font-black text-slate-500 text-xs uppercase tracking-widest border-b">
+                            {{ lv === 'Custom' ? '自定义词库' : (vocabMode === '700' ? '卓越班词汇' : (vocabMode === '1600' ? '机考核心词汇' : 'Level ' + lv)) }}
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-4">
+                            <div v-for="u in units" :key="u" class="p-3 bg-slate-50 rounded-2xl border flex flex-col gap-2 transition hover:border-current"
+                                 :class="isUnitDone(u) ? 'border-green-300 bg-green-50' : ''"
+                                 :style="!isUnitDone(u) ? {'hover:borderColor': 'var(--c-primary-200)'} : {}">
+                                <div class="text-center font-bold text-slate-700 truncate" :title="u">{{u}}</div>
+                                <div class="flex items-center justify-center gap-1" :title="'已掌握 ' + unitProgress(u).mastered + '/' + unitProgress(u).total">
+                                    <span class="text-[9px] font-bold" :class="isUnitDone(u) ? 'text-green-600' : 'text-slate-400'">🟢 {{ unitProgress(u).mastered }}/{{ unitProgress(u).total }}</span>
+                                    <span v-if="isUnitDone(u)" class="text-[9px] font-black text-green-500">✓ 全部归档</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button @click="startTest(u, false)" class="flex-1 py-2 bg-white border rounded-xl text-[10px] font-bold shadow-sm active:bg-slate-50">练习</button>
+                                    <button @click="startTest(u, true)" class="flex-1 py-2 text-white rounded-xl text-[10px] font-bold shadow-md"
+                                            :style="{background: 'var(--c-primary)', boxShadow: '0 4px 6px var(--c-shadow-sm)'}">抽测</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- v2: Plan Tab -->
+                <div v-if="tab==='plan' && !isTesting && !showResult" class="space-y-6">
+                    <!-- 未创建计划 -->
+                    <div v-if="!plan" class="p-8 lg:max-w-xl lg:mx-auto bg-white rounded-[2rem] shadow-sm border text-center">
+                        <div class="text-5xl mb-4">🗓️</div>
+                        <h3 class="text-xl font-black text-slate-800 mb-2">艾宾浩斯背词计划</h3>
+                        <p class="text-slate-400 text-sm mb-8 leading-relaxed">按记忆曲线（0/1/2/4/7/15/30 天）自动安排<br>每日新词 + 到期复习，科学对抗遗忘</p>
+                        <button @click="openPlanForm" class="w-full py-4 text-white rounded-2xl font-black shadow-lg"
+                                 :style="{background: 'var(--c-primary)', boxShadow: '0 8px 16px var(--c-shadow)'}">＋ 创建我的背词计划</button>
+                    </div>
+
+                    <!-- 计划编辑表单 -->
+                    <div v-if="planEditing" class="p-6 lg:max-w-xl lg:mx-auto bg-white rounded-[2rem] shadow-lg border space-y-5">
+                        <h3 class="font-black text-slate-800 text-lg">{{ plan ? '编辑计划' : '创建背词计划' }}</h3>
+                        <div>
+                            <label class="text-xs font-black text-slate-400 uppercase tracking-widest">选择词书 / 词表</label>
+                            <select v-model="planForm.bookId" class="w-full mt-2 p-4 border-2 border-slate-100 rounded-2xl font-bold text-sm bg-slate-50 focus:outline-none">
+                                <option v-for="b in planBookList" :key="b.id" :value="b.id">{{ b.label }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-black text-slate-400 uppercase tracking-widest">每日新词量</label>
+                            <div class="flex items-center gap-4 mt-2">
+                                <input type="number" v-model="planForm.perDay" min="5" max="200"
+                                       class="w-full p-4 border-2 border-slate-100 rounded-2xl text-center font-black text-2xl bg-slate-50 focus:outline-none"
+                                       :style="{color: 'var(--c-primary)'}">
+                                <span class="text-slate-400 font-bold text-sm">词 / 天</span>
+                            </div>
+                            <div class="flex gap-2 mt-2">
+                                <button v-for="n in [20, 40, 60, 100]" :key="n" @click="planForm.perDay = n"
+                                        :class="['flex-1 py-2 rounded-xl text-xs font-bold border-2 transition', planForm.perDay === n ? 'text-white' : 'bg-white text-slate-500 border-slate-100']"
+                                        :style="planForm.perDay === n ? {background: 'var(--c-primary)', borderColor: 'var(--c-primary)'} : {}">{{ n }}</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs font-black text-slate-400 uppercase tracking-widest">开始日期</label>
+                            <input type="date" v-model="planForm.startDate"
+                                   class="w-full mt-2 p-4 border-2 border-slate-100 rounded-2xl font-bold bg-slate-50 focus:outline-none">
+                        </div>
+                        <p v-if="planError" class="text-red-500 text-xs font-bold">{{ planError }}</p>
+                        <div class="flex gap-3">
+                            <button @click="planEditing = false" class="flex-1 py-4 border-2 border-slate-100 rounded-2xl font-black text-slate-400">取消</button>
+                            <button @click="savePlanForm" class="flex-1 py-4 text-white rounded-2xl font-black shadow-lg"
+                                    :style="{background: 'var(--c-primary)'}">保存计划</button>
+                        </div>
+                    </div>
+
+                    <!-- 计划主视图（桌面双栏：左=概览+今日任务，右=每日任务列表） -->
+                    <template v-if="plan && !planEditing">
+                        <div class="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+                            <div class="space-y-6">
+                                <!-- 计划概览 -->
+                                <div class="plan-hero text-white">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <div class="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">艾宾浩斯背词计划</div>
+                                    <div class="text-xl font-black">{{ planBookName(plan.bookId) }}</div>
+                                    <div class="text-[11px] opacity-75 mt-1">每日 {{ plan.perDay }} 词 · 始于 {{ fmtCN(plan.startDate) }} · 共 {{ dayView.totalDays }} 天</div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button @click="openPlanForm" class="px-3 py-1.5 bg-white/20 rounded-full text-[11px] font-bold">✏️ 修改</button>
+                                    <button @click="deletePlan" class="px-3 py-1.5 bg-white/20 rounded-full text-[11px] font-bold">🗑️ 删除</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 今日任务 -->
+                        <div class="p-6 bg-white rounded-[2rem] shadow-sm border">
+                            <div class="flex justify-between items-center mb-5">
+                                <h3 class="font-black text-slate-800 text-lg">📌 今日任务</h3>
+                                <span class="text-[11px] font-bold text-slate-400">{{ fmtCN(todayStr()) }} {{ weekdayCN(todayStr()) }}</span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 mb-5">
+                                <div class="p-4 rounded-2xl text-center" :style="{background: 'var(--c-primary-50)'}">
+                                    <div class="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">新词待学</div>
+                                    <div class="text-3xl font-black" :style="{color: 'var(--c-primary)'}">{{ todayView.newUndone.length }}</div>
+                                </div>
+                                <div class="p-4 rounded-2xl bg-orange-50 text-center">
+                                    <div class="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">待复习</div>
+                                    <div class="text-3xl font-black text-orange-500">{{ todayView.revUndone.length }}</div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button @click="startPlanTest('new')" class="flex-1 py-4 text-white rounded-2xl font-black shadow-lg text-sm"
+                                        :style="{background: 'var(--c-primary)', boxShadow: '0 6px 12px var(--c-shadow)'}">
+                                    🚀 学今日新词 ({{ todayView.newUndone.length }})
+                                </button>
+                                <button @click="startPlanTest('review')" class="flex-1 py-4 bg-orange-500 text-white rounded-2xl font-black shadow-lg shadow-orange-200 text-sm">
+                                    🔁 复习到期词 ({{ todayView.revUndone.length }})
+                                </button>
+                            </div>
+                        </div>
+                            </div>
+
+                        <!-- 按日任务列表 -->
+                        <div class="p-6 bg-white rounded-[2rem] shadow-sm border">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-black text-slate-800 text-lg">📋 每日任务列表</h3>
+                                <div class="flex items-center gap-2">
+                                    <button @click="dayOffset--" class="w-8 h-8 rounded-full border font-black text-slate-400">‹</button>
+                                    <span class="text-xs font-black text-slate-500 w-28 text-center">{{ fmtCN(dayView.date) }}<br><span class="text-[9px] text-slate-300">{{ dayView.isToday ? '今天' : weekdayCN(dayView.date) }}</span></span>
+                                    <button @click="dayOffset++" class="w-8 h-8 rounded-full border font-black text-slate-400">›</button>
+                                </div>
+                            </div>
+
+                            <div v-if="dayView.tasks.over" class="text-center py-10 text-slate-300 font-bold italic">该日无新词安排（已学完 / 未开始）</div>
+                            <template v-else>
+                                <div v-if="dayView.tasks.newWords.length === 0 && dayView.tasks.reviews.length === 0" class="text-center py-10 text-slate-300 font-bold italic">
+                                    {{ dayOffset < 0 ? '尚未开始' : '计划外日期' }}
+                                </div>
+                                <template v-else>
+                                    <!-- 新词 -->
+                                    <div v-if="dayView.tasks.newWords.length" class="mb-4">
+                                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">📖 新词 · {{ dayView.newDone.length }}/{{ dayView.tasks.newWords.length }}</div>
+                                        <div class="space-y-2 max-h-64 lg:max-h-[28rem] overflow-y-auto no-scrollbar pr-1">
+                                            <div v-for="w in dayView.tasks.newWords" :key="'n-' + w.word"
+                                                 class="task-row" :class="{done: isNewTaskDone(dayView.date, w.word)}">
+                                                <div class="task-check" :class="{on: isNewTaskDone(dayView.date, w.word)}"
+                                                     @click="toggleNewTask(w.word)">✓</div>
+                                                <span class="font-bold text-sm text-slate-700 flex-1 truncate">{{ w.word }}</span>
+                                                <span class="st-pill" :class="'st-' + ['undo','doing','done'][SAT_STATUS.indexOf(statusOf(w.word))]"
+                                                      @click="cycleStatus(w.word)">{{ STATUS_ICON[statusOf(w.word)] }} {{ statusOf(w.word) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- 复习 -->
+                                    <div v-if="dayView.tasks.reviews.length">
+                                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">🔁 到期复习 · {{ dayView.revDone.length }}/{{ dayView.tasks.reviews.length }}</div>
+                                        <div class="space-y-2 max-h-64 lg:max-h-[28rem] overflow-y-auto no-scrollbar pr-1">
+                                            <div v-for="r in dayView.tasks.reviews" :key="'r-' + r.word"
+                                                 class="task-row" :class="{done: isReviewDone(dayView.date, r.word)}">
+                                                <div class="task-check" :class="{on: isReviewDone(dayView.date, r.word)}"
+                                                     @click="toggleReviewTask(r.word)">✓</div>
+                                                <span class="font-bold text-sm text-slate-700 flex-1 truncate">{{ r.word }}</span>
+                                                <span class="text-[9px] font-black text-orange-400 bg-orange-50 px-2 py-1 rounded-full">第{{ r.stage }}轮</span>
+                                                <span class="st-pill" :class="'st-' + ['undo','doing','done'][SAT_STATUS.indexOf(statusOf(w.word))]"
+                                                      @click="cycleStatus(r.word)">{{ STATUS_ICON[statusOf(r.word)] }} {{ statusOf(r.word) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </template>
+                        </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Custom Test Tab -->
+                <div v-if="tab==='custom' && !isTesting && !showResult" class="space-y-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0 lg:items-start">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-black text-slate-800 text-lg">1. 勾选测试单元</h3>
+                            <button @click="selectedUnits = []" class="text-xs text-slate-400 border px-2 py-1 rounded hover:bg-slate-50">清空选择</button>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-64 lg:max-h-80 overflow-y-auto p-2 no-scrollbar">
+                            <label v-for="u in sortedUnits" :key="u"
+                                   :class="['flex items-center space-x-2 p-3 rounded-xl border-2 cursor-pointer transition-all', selectedUnits.includes(u) ? '' : 'border-slate-100 bg-slate-50 hover:border-current']"
+                                   :style="selectedUnits.includes(u) ? {borderColor: 'var(--c-primary)', background: 'var(--c-primary-50)'} : {}">
+                                <input type="checkbox" :value="u" v-model="selectedUnits" class="hidden">
+                                <span :class="['text-xs font-bold w-full text-center truncate', selectedUnits.includes(u) ? '' : 'text-slate-500']"
+                                      :style="selectedUnits.includes(u) ? {color: 'var(--c-primary-700)'} : {}"
+                                      :title="u">{{u}}</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border">
+                        <h3 class="font-black text-slate-800 text-lg mb-4">2. 设定抽测数量</h3>
+                        <div class="flex items-center space-x-4">
+                            <input type="number" v-model="customCount" min="1"
+                                   class="w-full p-4 border-2 border-slate-100 rounded-2xl text-center font-black text-2xl focus:outline-none bg-slate-50"
+                                   :style="{color: 'var(--c-primary)'}">
+                            <span class="text-slate-400 font-bold uppercase tracking-widest text-sm">Words</span>
+                        </div>
+                    </div>
+
+                    <button @click="startCustomTest" class="w-full py-5 lg:col-span-2 text-white rounded-[2rem] font-black shadow-xl text-lg hover:opacity-90 transition active:scale-95"
+                            :style="{background: 'var(--c-primary)', boxShadow: '0 10px 15px var(--c-shadow)'}">
+                        🚀 开始自选检测
+                    </button>
+                </div>
+
+                <!-- Flashcard Tab（桌面端弹性列布局：卡面自适应视口高度，全部组件不滚动可见） -->
+                <div v-if="tab==='flash' && !isTesting && !showResult" class="lg:max-w-3xl lg:mx-auto lg:flex lg:flex-col lg:h-[calc(100vh-16rem)]">
+                    <div class="flex gap-2 overflow-x-auto mb-6 pb-2 no-scrollbar lg:shrink-0">
+                        <button v-for="u in sortedUnits" @click="selectFlashUnit(u)"
+                                :class="['px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all', flashUnit===u ? 'text-white shadow-lg' : 'bg-white text-slate-500 border']"
+                                :style="flashUnit===u ? {background: 'var(--c-primary)'} : {}">
+                            {{u}}
+                        </button>
+                    </div>
+                    <div v-if="flashList.length" class="relative h-96 lg:h-auto lg:flex-1 lg:min-h-[18rem] w-full" style="perspective: 1500px;">
+                        <div :class="['card-flip w-full h-full relative', isFlipped ? 'is-flipped' : '']" @click="isFlipped = !isFlipped">
+                            <div class="card-face bg-white shadow-2xl border-4 border-slate-50 flex flex-col">
+                                <div class="flex items-center justify-center gap-4">
+                                    <h2 class="text-5xl font-black text-slate-800 tracking-tighter">{{ flashList[flashIdx].word }}</h2>
+                                    <button @click.stop="playAudio(flashList[flashIdx].word)" class="text-3xl hover:scale-125 transition-transform z-10" title="点击发音">🔊</button>
+                                </div>
+                                <div class="mt-6">
+                                    <span class="st-pill" :class="'st-' + ['undo','doing','done'][SAT_STATUS.indexOf(statusOf(flashList[flashIdx].word))]"
+                                          @click.stop="cycleStatus(flashList[flashIdx].word)">{{ STATUS_ICON[statusOf(flashList[flashIdx].word)] }} {{ statusOf(flashList[flashIdx].word) }}</span>
+                                </div>
+                            </div>
+                            <div class="card-face card-back text-white shadow-2xl text-center flex-col" :style="{background: 'var(--c-primary)'}">
+                                <p class="text-3xl font-black mb-4">{{ flashList[flashIdx].meaning }}</p>
+                                <p class="text-sm italic font-medium px-4 opacity-80" v-if="flashList[flashIdx].english">{{ flashList[flashIdx].english }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="flashList.length" class="flex justify-between items-center mt-12 lg:mt-8 lg:shrink-0">
+                        <button @click="prevFlash" class="p-4 bg-white rounded-full shadow-lg text-xl">⬅️</button>
+
+                        <div class="flex flex-col items-center gap-3">
+                            <div class="px-6 py-2 rounded-full font-black" :style="{background: 'var(--c-primary-50)', color: 'var(--c-primary)'}">{{flashIdx + 1}} / {{flashList.length}}</div>
+                            <button @click="toggleFlashcardWrong"
+                                    :class="['px-5 py-2 rounded-full text-xs font-bold transition-all shadow-sm border',
+                                             isCurrentInWrongs ? 'bg-orange-100 text-orange-600 border-orange-200' : 'bg-white text-slate-400 border-slate-200 hover:border-orange-300 hover:text-orange-500']">
+                                {{ isCurrentInWrongs ? '★ 已在错题本' : '☆ 记入错题本' }}
+                            </button>
+                        </div>
+
+                        <button @click="nextFlash" class="p-4 bg-white rounded-full shadow-lg text-xl">➡️</button>
+                    </div>
+                </div>
+
+                <!-- v2: Mastery Tab -->
+                <div v-if="tab==='mastery' && !isTesting && !showResult" class="space-y-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0 lg:items-start">
+                    <div class="p-6 lg:col-span-2 bg-white rounded-[2rem] shadow-sm border">
+                        <div class="flex justify-between items-center mb-5">
+                            <h3 class="font-black text-slate-800 text-lg">🎯 掌握总览</h3>
+                            <span class="text-[11px] font-bold text-slate-400">{{ masteryCounts.total }} 词</span>
+                        </div>
+                        <div class="mstat-grid">
+                            <button @click="masteryFilter = (masteryFilter === '未掌握' ? 'all' : '未掌握')" class="mstat-card mstat-undo" :class="{ring: masteryFilter==='未掌握'}">
+                                <div class="num">{{ masteryCounts['未掌握'] }}</div>
+                                <div class="lbl">🔴 未掌握</div>
+                            </button>
+                            <button @click="masteryFilter = (masteryFilter === '掌握中' ? 'all' : '掌握中')" class="mstat-card mstat-doing" :class="{ring: masteryFilter==='掌握中'}">
+                                <div class="num">{{ masteryCounts['掌握中'] }}</div>
+                                <div class="lbl">🟡 掌握中</div>
+                            </button>
+                            <button @click="masteryArchiveOpen = !masteryArchiveOpen; masteryFilter='已掌握'" class="mstat-card mstat-done" :class="{ring: masteryFilter==='已掌握'}">
+                                <div class="num">{{ masteryCounts['已掌握'] }}</div>
+                                <div class="lbl">🟢 已掌握(归档)</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="p-6 bg-white rounded-[2rem] shadow-sm border">
+                        <div class="flex items-center justify-between mb-4 gap-3">
+                            <h4 class="font-black text-slate-500 text-xs uppercase tracking-widest">{{ masteryFilter === 'all' ? '全部单词' : masteryFilter }}</h4>
+                            <input v-model="masteryKeyword" placeholder="搜索单词 / 释义" class="px-4 py-2 border-2 border-slate-100 rounded-full text-xs font-bold w-44 focus:outline-none bg-slate-50">
+                        </div>
+                        <div v-if="masteryVisible.length === 0" class="text-center py-10 text-slate-300 font-bold italic">没有符合条件的单词</div>
+                        <div class="space-y-2 max-h-[26rem] lg:max-h-[34rem] overflow-y-auto no-scrollbar pr-1">
+                            <div v-for="item in masteryVisible" :key="item.word" class="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-black text-slate-800 text-sm truncate">{{ item.word }}</div>
+                                    <div class="text-[11px] text-slate-400 truncate">{{ item.meta.unit }} · {{ item.meta.meaning }}</div>
+                                </div>
+                                <div class="st-btn-group">
+                                    <button v-for="st in SAT_STATUS" :key="st" @click="setStatus(item.word, st)"
+                                            class="st-btn" :class="item.status === st ? (st === '未掌握' ? 'on-undo' : (st === '掌握中' ? 'on-doing' : 'on-done')) : ''">
+                                        {{ ['🔴','🟡','🟢'][SAT_STATUS.indexOf(st)] }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button v-if="masteryList.length > 80 && !masteryShowAll" @click="masteryShowAll = true"
+                                class="w-full mt-3 py-3 border-2 border-dashed rounded-2xl text-xs font-black text-slate-400">
+                            展开全部 {{ masteryList.length }} 词
+                        </button>
+                        <button v-else-if="masteryShowAll && masteryList.length > 80" @click="masteryShowAll = false"
+                                class="w-full mt-3 py-3 border-2 border-dashed rounded-2xl text-xs font-black text-slate-400">
+                            收起列表
+                        </button>
+                    </div>
+
+                    <!-- 已掌握归档区 -->
+                    <div>
+                        <div class="archive-head" @click="masteryArchiveOpen = !masteryArchiveOpen">
+                            <span>{{ masteryArchiveOpen ? '▾' : '▸' }} 📦 已掌握归档（{{ archivedWords.length }} 词）</span>
+                            <span class="text-[11px] font-normal text-green-500">点击{{ masteryArchiveOpen ? '收起' : '展开' }} · 可回退状态</span>
+                        </div>
+                        <div v-if="masteryArchiveOpen" class="mt-3 space-y-2 lg:max-h-[36rem] lg:overflow-y-auto no-scrollbar">
+                            <div v-if="archivedWords.length === 0" class="text-center py-8 text-slate-300 font-bold italic bg-white rounded-2xl border">还没有归档单词</div>
+                            <div v-for="item in archivedWords" :key="'arc-' + item.word" class="flex items-center gap-3 p-3 bg-white rounded-2xl border border-green-100">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-black text-slate-800 text-sm truncate">{{ item.word }}</div>
+                                    <div class="text-[11px] text-slate-400 truncate">{{ item.meta.unit }} · {{ item.meta.meaning }}</div>
+                                </div>
+                                <button @click="setStatus(item.word, '掌握中')" class="st-btn">↩ 退回掌握中</button>
+                                <button @click="setStatus(item.word, '未掌握')" class="st-btn">↩ 未掌握</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Testing Screen -->
+                <div v-if="isTesting && !showResult" class="py-6 lg:py-10 lg:max-w-4xl lg:mx-auto">
+                    <div class="flex justify-between items-center mb-10 text-[10px] font-black uppercase text-slate-400">
+                        <span class="px-3 py-1 rounded-full uppercase tracking-widest" :style="{background: 'var(--c-primary-100)', color: 'var(--c-primary-600)'}">{{isExamMode ? (isWrongTestMode ? 'Wrong Words' : (testContext ? 'Plan Task' : 'Exam')) : 'Study'}}</span>
+                        <span>PROGRESS: {{idx+1}} / {{testList.length}}</span>
+                    </div>
+                    <div class="flex items-center justify-center gap-4 mb-16">
+                        <h2 class="text-6xl font-black tracking-tighter text-slate-800">{{curr.word}}</h2>
+                        <button @click="playAudio(curr.word)" class="text-3xl hover:scale-125 transition-all active:scale-95" title="点击发音" :style="{color: 'var(--c-primary)'}">🔊</button>
+                    </div>
+                    <div class="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
+                        <button v-for="opt in opts" @click="handleAnswer(opt)" :disabled="answered"
+                            :class="['w-full p-6 rounded-[1.5rem] border-2 text-left font-bold transition-all shadow-sm', getStyle(opt)]">
+                            <div class="flex justify-between items-center">
+                                <span>{{opt}}</span>
+                                <span v-if="answered && opt===curr.meaning">✅</span>
+                            </div>
+                        </button>
+                    </div>
+                    <!-- v2: 答题后状态切换条 -->
+                    <div v-if="answered" class="answer-bar">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">掌握状态</span>
+                        <div class="st-btn-group">
+                            <button v-for="st in SAT_STATUS" :key="st" @click="setStatus(curr.word, st)"
+                                    class="st-btn"
+                                    :class="statusOf(curr.word)===st ? (st==='未掌握' ? 'on-undo' : (st==='掌握中' ? 'on-doing' : 'on-done')) : ''">
+                                {{ STATUS_ICON[st] }} {{ st }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Result Screen -->
+                <div v-if="showResult" class="text-center py-16 lg:py-20 lg:max-w-2xl lg:mx-auto bg-white rounded-[3rem] shadow-xl border border-slate-100">
+                    <div class="text-8xl mb-6">🏆</div>
+                    <h2 class="text-xl font-black text-slate-400 uppercase tracking-widest">测试完成</h2>
+                    <div class="text-8xl font-black my-6" :style="{color: 'var(--c-primary)'}">{{finalScore}}%</div>
+                    <p class="text-slate-500 font-black mb-10 text-lg">Correct: {{correctCount}} / {{testList.length}}</p>
+                    <button @click="exitTest" class="w-2/3 py-5 text-white rounded-full font-black shadow-xl uppercase"
+                            :style="{background: 'var(--c-primary)', boxShadow: '0 10px 15px var(--c-shadow)'}">返回主页</button>
+                </div>
+
+                <!-- Wrong Words Tab -->
+                <div v-if="tab==='wrong' && !isTesting && !showResult" class="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 lg:items-start">
+                    <div class="flex justify-between items-center mb-4 lg:col-span-2" v-if="wrongs.length > 0">
+                        <button @click="startWrongTest" class="text-white px-6 py-3 rounded-2xl font-black text-sm shadow-md hover:opacity-90 transition flex-1 mr-2 active:scale-95"
+                                :style="{background: 'var(--c-primary)'}">
+                            🚀 错题闯关
+                        </button>
+                        <button @click="exportWrongs" class="px-4 py-3 rounded-2xl font-bold text-xs shadow-sm hover:opacity-80 transition"
+                                :style="{background: 'var(--c-primary-50)', color: 'var(--c-primary-700)'}">
+                            📥 导出 (CSV)
+                        </button>
+                    </div>
+
+                    <div v-if="!wrongs.length" class="text-center py-32 lg:col-span-2 text-slate-300 font-bold italic">Perfect! No mistakes yet.</div>
+
+                    <div v-for="w in wrongs" :key="w.word" class="p-6 bg-white rounded-3xl shadow-sm border-l-8 flex justify-between items-center"
+                         :style="{borderLeftColor: 'var(--c-primary)'}">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <div class="font-black text-xl text-slate-800">{{w.word}}</div>
+                                <button @click="playAudio(w.word)" class="text-sm hover:scale-125 transition-transform text-slate-400 hover:opacity-70">🔊</button>
+                            </div>
+                            <div class="font-black text-sm mt-1 uppercase tracking-tight" :style="{color: 'var(--c-primary)'}">{{w.meaning}}</div>
+                            <div class="text-slate-400 text-[11px] italic mt-1" v-if="w.english">{{w.english}}</div>
+                        </div>
+                        <div class="ml-4 flex flex-col gap-2 items-end">
+                            <span class="st-pill" :class="'st-' + ['undo','doing','done'][SAT_STATUS.indexOf(statusOf(w.word))]"
+                                  @click="cycleStatus(w.word)">{{ STATUS_ICON[statusOf(w.word)] }} {{ statusOf(w.word) }}</span>
+                            <button @click="removeWrong(w.word)" class="bg-slate-50 text-slate-400 p-3 rounded-2xl hover:bg-green-100 hover:text-green-600 transition-colors">✔</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        </div>
+    </div>
+
+    <script src="js/data/data3000.js"></script>
+    <script src="js/data/data700.js"></script>
+    <script src="js/data/data1600.js"></script>
+    <script src="js/data/books.js"></script>
+    <script src="js/core/ns.js"></script>
+    <script src="js/core/storage.js"></script>
+    <script src="js/core/statusStore.js"></script>
+    <script src="js/core/planStore.js"></script>
+    <script src="js/core/scheduler.js"></script>
+    <script src="js/core/answerLog.js"></script>
+    <script src="js/core/audio.js"></script>
+    <script src="js/ui/planTab.js"></script>
+    <script src="js/ui/masteryTab.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
